@@ -3,9 +3,10 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import HomeScreen from '../screens/HomeScreen';
 import MoreScreen from '../screens/MoreScreen';
-import ProfileScreen from '../screens/ProfileScreen';
+import ProfileStackNavigator from './ProfileStackNavigator';
 import NetworkStackNavigator from './NetworkStackNavigator';
 import ChatStackNavigator from './ChatStackNavigator';
+
 
 const Tab = createBottomTabNavigator();
 
@@ -56,7 +57,7 @@ export default function AppNavigator() {
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Network" component={NetworkStackNavigator} />
       <Tab.Screen name="Chats" component={ChatStackNavigator} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen name="Profile" component={ProfileStackNavigator} />
       <Tab.Screen name="More" component={MoreScreen} />
       
     </Tab.Navigator>

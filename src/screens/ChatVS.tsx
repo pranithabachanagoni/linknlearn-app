@@ -27,17 +27,18 @@ const ChatVS = ({ navigation, route }: any) => {
     const sortedChatId = getSortedChatId();
     const chatRef = doc(firestore, 'chats', sortedChatId);
     const chatSnap = await getDoc(chatRef);
-
+  
     if (!chatSnap.exists()) {
       await setDoc(chatRef, {
         participants: [currentUserId, otherUser.id],
         lastUpdated: serverTimestamp(),
       });
-      console.log('📦 Chat created:', sortedChatId);
+      console.log("📦 Chat created:", sortedChatId);
     }
-
+  
     return sortedChatId;
   };
+  
 
   // 🔥 Load messages
   useEffect(() => {
@@ -88,9 +89,10 @@ const ChatVS = ({ navigation, route }: any) => {
   const sendMessage = async () => {
     if (!inputText.trim()) return;
   
-    const sortedChatId = [currentUserId, otherUser.id].sort().join('_');
+    // ✅ Ensure the chat exists before sending
+    const sortedChatId = await createChatIfNotExists();
   
-    // 🔍 Add these debug logs
+    // 🔍 Debug logs
     console.log("👤 Sending as:", currentUserId);
     console.log("💬 Chat ID:", sortedChatId);
     console.log("📨 Message:", inputText);
@@ -110,6 +112,7 @@ const ChatVS = ({ navigation, route }: any) => {
       Alert.alert("Error", "Message failed to send.");
     }
   };
+  
   
 
   const renderItem = ({ item }: any) => {
