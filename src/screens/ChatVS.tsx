@@ -1,17 +1,15 @@
+// ✅ Modified ChatVS to use Firebase Realtime Database instead of Firestore
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, FlatList, TextInput, Modal,
   StyleSheet, Image, KeyboardAvoidingView, Platform, Alert
 } from 'react-native';
-import { Ionicons, Entypo, MaterialIcons } from '@expo/vector-icons';
-import {
-  collection, addDoc, query, orderBy, onSnapshot,
-  doc, setDoc, getDoc, serverTimestamp
-} from 'firebase/firestore';
-import { firestore } from '../config/firebase';
+import { Ionicons, Entypo } from '@expo/vector-icons';
+import { ref as dbRef, onValue, push } from 'firebase/database';
+import { database } from '../config/firebase';
 
 const ChatVS = ({ navigation, route }: any) => {
-  const { chatId, currentUserId, otherUser } = route.params;
+  const { currentUserId, otherUser } = route.params;
   const [messages, setMessages] = useState<any[]>([]);
   const [inputText, setInputText] = useState('');
   const [showActions, setShowActions] = useState(false);
@@ -22,98 +20,43 @@ const ChatVS = ({ navigation, route }: any) => {
     return `${sortedIds[0]}_${sortedIds[1]}`;
   };
 
-  // 🔧 Ensure chat exists
-  const createChatIfNotExists = async () => {
-    const sortedChatId = getSortedChatId();
-    const chatRef = doc(firestore, 'chats', sortedChatId);
-    const chatSnap = await getDoc(chatRef);
-  
-    if (!chatSnap.exists()) {
-      await setDoc(chatRef, {
-        participants: [currentUserId, otherUser.id],
-        lastUpdated: serverTimestamp(),
-      });
-      console.log("📦 Chat created:", sortedChatId);
-    }
-  
-    return sortedChatId;
-  };
-  
-
-  // 🔥 Load messages
   useEffect(() => {
-    let unsubscribe: () => void;
-  
-    const setupChat = async () => {
-      try {
-        const sortedChatId = [currentUserId, otherUser.id].sort().join('_');
-        const chatRef = doc(firestore, 'chats', sortedChatId);
-        const chatSnap = await getDoc(chatRef);
-  
-        if (!chatSnap.exists()) {
-          await setDoc(chatRef, {
-            participants: [currentUserId, otherUser.id],
-            lastUpdated: serverTimestamp(),
-          });
-        }
-  
-        const q = query(
-          collection(firestore, 'chats', sortedChatId, 'messages'),
-          orderBy('createdAt')
-        );
-  
-        unsubscribe = onSnapshot(q, (snapshot) => {
-          const loadedMessages = snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          }));
-          setMessages(loadedMessages);
-          setTimeout(() => {
-            flatListRef.current?.scrollToEnd({ animated: true });
-          }, 100);
-        });
-      } catch (err) {
-        console.error("🔥 Chat setup failed:", err);
-      }
-    };
-  
-    setupChat();
-  
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, [currentUserId, otherUser.id]);
-  
+    const chatId = getSortedChatId();
+    const messagesRef = dbRef(database, `messages/${chatId}`);
 
-  // 📤 Send message
+    const unsubscribe = onValue(messagesRef, (snapshot) => {
+      const data = snapshot.val() || {};
+      const loadedMessages = Object.entries(data).map(([id, msg]: any) => ({ id, ...msg }));
+      setMessages(loadedMessages);
+
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    });
+
+    return () => unsubscribe();
+  }, [currentUserId, otherUser.id]);
+
   const sendMessage = async () => {
     if (!inputText.trim()) return;
-  
-    // ✅ Ensure the chat exists before sending
-    const sortedChatId = await createChatIfNotExists();
-  
-    // 🔍 Debug logs
-    console.log("👤 Sending as:", currentUserId);
-    console.log("💬 Chat ID:", sortedChatId);
-    console.log("📨 Message:", inputText);
-  
+
+    const chatId = getSortedChatId();
+    const messagesRef = dbRef(database, `messages/${chatId}`);
+
+    const newMessage = {
+      text: inputText,
+      senderId: currentUserId,
+      createdAt: Date.now(),
+    };
+
     try {
-      await addDoc(
-        collection(firestore, 'chats', sortedChatId, 'messages'),
-        {
-          text: inputText,
-          senderId: currentUserId,
-          createdAt: serverTimestamp(),
-        }
-      );
+      await push(messagesRef, newMessage);
       setInputText('');
     } catch (err) {
-      console.error("❌ Message send error:", err);
+      console.error("❌ Failed to send message:", err);
       Alert.alert("Error", "Message failed to send.");
     }
   };
-  
-  
 
   const renderItem = ({ item }: any) => {
     const isMe = item.senderId === currentUserId;
@@ -125,14 +68,13 @@ const ChatVS = ({ navigation, route }: any) => {
         ]}
       >
         <Text style={isMe ? styles.textWhite : styles.textBlack}>{item.text}</Text>
-        {isMe && <Text style={styles.seenText}>Sent</Text>}
+        <Text style={styles.seenText}>{new Date(item.createdAt).toLocaleTimeString()}</Text>
       </View>
     );
   };
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color="black" />
@@ -152,7 +94,6 @@ const ChatVS = ({ navigation, route }: any) => {
         </View>
       </View>
 
-      {/* Messages */}
       <FlatList
         ref={flatListRef}
         data={messages}
@@ -161,7 +102,6 @@ const ChatVS = ({ navigation, route }: any) => {
         contentContainerStyle={{ padding: 10 }}
       />
 
-      {/* Input */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={90}
@@ -179,7 +119,6 @@ const ChatVS = ({ navigation, route }: any) => {
         </View>
       </KeyboardAvoidingView>
 
-      {/* Modal */}
       <Modal
         visible={showActions}
         animationType="slide"
@@ -206,94 +145,42 @@ const ChatVS = ({ navigation, route }: any) => {
 
 export default ChatVS;
 
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-    borderBottomColor: '#ccc',
-    borderBottomWidth: 1,
+    flexDirection: 'row', alignItems: 'center', padding: 10,
+    borderBottomColor: '#ccc', borderBottomWidth: 1,
   },
-  avatar: {
-    width: 35, height: 35, borderRadius: 999, marginHorizontal: 10,
-  },
-  username: {
-    fontSize: 16,
-    fontWeight: '600',
-    flex: 1,
-  },
-  headerIcons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
+  avatar: { width: 35, height: 35, borderRadius: 999, marginHorizontal: 10 },
+  username: { fontSize: 16, fontWeight: '600', flex: 1 },
+  headerIcons: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   icon: { marginHorizontal: 5 },
-  messageBubble: {
-    maxWidth: '75%',
-    padding: 10,
-    marginVertical: 4,
-    borderRadius: 10,
-  },
-  messageLeft: {
-    backgroundColor: '#f0f0f0',
-    alignSelf: 'flex-start',
-  },
-  messageRight: {
-    backgroundColor: '#000',
-    alignSelf: 'flex-end',
-  },
+  messageBubble: { maxWidth: '75%', padding: 10, marginVertical: 4, borderRadius: 10 },
+  messageLeft: { backgroundColor: '#f0f0f0', alignSelf: 'flex-start' },
+  messageRight: { backgroundColor: '#000', alignSelf: 'flex-end' },
   textBlack: { color: '#000' },
   textWhite: { color: '#fff' },
-  seenText: {
-    fontSize: 10,
-    color: '#ccc',
-    marginTop: 4,
-    alignSelf: 'flex-end',
-  },
+  seenText: { fontSize: 10, color: '#ccc', marginTop: 4, alignSelf: 'flex-end' },
   inputContainer: {
-    flexDirection: 'row',
-    padding: 10,
-    borderTopColor: '#ccc',
-    borderTopWidth: 1,
-    alignItems: 'center',
+    flexDirection: 'row', padding: 10,
+    borderTopColor: '#ccc', borderTopWidth: 1, alignItems: 'center',
   },
   input: {
-    flex: 1,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    marginRight: 10,
+    flex: 1, backgroundColor: '#f0f0f0', borderRadius: 20,
+    paddingHorizontal: 15, paddingVertical: 8, marginRight: 10,
   },
   modalOverlay: {
-    flex: 1,
-    backgroundColor: '#00000077',
-    justifyContent: 'flex-end',
+    flex: 1, backgroundColor: '#00000077', justifyContent: 'flex-end',
   },
   modalSheet: {
-    backgroundColor: '#fff',
-    paddingVertical: 20,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    backgroundColor: '#fff', paddingVertical: 20,
+    borderTopLeftRadius: 16, borderTopRightRadius: 16,
   },
   modalItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 15,
-    paddingLeft: 20,
+    flexDirection: 'row', alignItems: 'center',
+    padding: 15, paddingLeft: 20,
   },
-  modalText: {
-    fontSize: 16,
-    marginLeft: 15,
-  },
-  modalCancel: {
-    padding: 15,
-    alignItems: 'center',
-  },
-  cancelText: {
-    color: 'red',
-    fontSize: 16,
-  },
+  modalText: { fontSize: 16, marginLeft: 15 },
+  modalCancel: { padding: 15, alignItems: 'center' },
+  cancelText: { color: 'red', fontSize: 16 },
 });

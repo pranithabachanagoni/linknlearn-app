@@ -7,6 +7,7 @@ import {
 import { getStorage } from 'firebase/storage';
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 import { getFirestore, initializeFirestore } from 'firebase/firestore';
+import { getDatabase } from 'firebase/database';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAW1a-PorKqHuzNbvU8DPa1A_RxFyyikZY",
@@ -20,7 +21,6 @@ const firebaseConfig = {
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// ✅ Proper Auth with AsyncStorage persistence
 let auth;
 try {
   auth = initializeAuth(app, {
@@ -30,7 +30,6 @@ try {
   auth = getAuth(app);
 }
 
-// ✅ Firestore setup for React Native
 let firestore;
 try {
   firestore = initializeFirestore(app, {
@@ -42,5 +41,6 @@ try {
 }
 
 const storage = getStorage(app);
+const database = getDatabase(app); // ✅ Realtime Database added
 
-export { auth, firestore, storage };
+export { auth, firestore, storage, database };
