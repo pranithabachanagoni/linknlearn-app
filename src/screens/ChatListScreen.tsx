@@ -3,71 +3,74 @@ import {
   View, Text, FlatList, TextInput, Image,
   TouchableOpacity, StyleSheet
 } from 'react-native';
-import { firestore } from '../config/firebase';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { ref as dbRef, onValue } from 'firebase/database';
+import { database, firestore } from '../config/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 
 export default function ChatListScreen({ navigation }) {
   const { user } = useAuth();
-  const [connections, setConnections] = useState([]);
+  const [chats, setChats] = useState([]);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    const fetchConnections = async () => {
-      try {
-        const userDoc = await getDoc(doc(firestore, 'users', user.uid));
-        const userData = userDoc.data();
-        const connectionIds = userData?.connections || [];
+    if (!user) return;
 
-        const connectionDocs = await Promise.all(
-          connectionIds.map((id) => getDoc(doc(firestore, 'users', id)))
-        );
+    const messagesRef = dbRef(database, 'messages');
 
-        const connectionData = connectionDocs
-          .filter((doc) => doc.exists())
-          .map((doc) => ({ id: doc.id, ...doc.data() }));
+    onValue(messagesRef, async (snapshot) => {
+      const data = snapshot.val() || {};
+      const relevantChats = Object.entries(data).filter(([chatId]) =>
+        chatId.includes(user.uid)
+      );
 
-        setConnections(connectionData);
-      } catch (error) {
-        console.error('🔥 Error fetching connections:', error);
-      }
-    };
+      const chatData = await Promise.all(
+        relevantChats.map(async ([chatId, messages]) => {
+          const messagesArray = Object.entries(messages).map(([id, msg]) => msg);
+          const lastMsg = messagesArray[messagesArray.length - 1];
 
-    fetchConnections();
-  }, []);
+          const otherUserId = chatId.replace(user.uid, '').replace('_', '');
+          const userDoc = await getDoc(doc(firestore, 'users', otherUserId));
+          const otherUser = userDoc.exists() ? userDoc.data() : {};
 
-  const filteredConnections = connections.filter((c) =>
-    c.fullName.toLowerCase().includes(search.toLowerCase())
+          return {
+            chatId,
+            lastMessage: lastMsg.text,
+            time: lastMsg.createdAt,
+            otherUser: {
+              id: otherUserId,
+              fullName: otherUser.fullName || 'User',
+              photoURL: otherUser.photoURL || 'https://i.pravatar.cc/300',
+            },
+          };
+        })
+      );
+
+      setChats(chatData.sort((a, b) => b.time - a.time));
+    });
+  }, [user]);
+
+  const filteredChats = chats.filter((chat) =>
+    chat.otherUser.fullName.toLowerCase().includes(search.toLowerCase())
   );
 
   const renderItem = ({ item }) => (
     <TouchableOpacity
       style={styles.itemContainer}
-      onPress={async () => {
-        const participants = [user.uid, item.id].sort();
-        const chatId = `${participants[0]}_${participants[1]}`;
-
-        const chatRef = doc(firestore, 'chats', chatId);
-        const chatSnap = await getDoc(chatRef);
-
-        if (!chatSnap.exists()) {
-          await setDoc(chatRef, {
-            participants,
-            lastUpdated: serverTimestamp(),
-          });
-        }
-
+      onPress={() =>
         navigation.navigate('ChatVS', {
-          chatId,
+          chatId: item.chatId,
           currentUserId: user.uid,
-          otherUser: item,
-        });
-      }}
+          otherUser: item.otherUser,
+        })
+      }
     >
-      <Image source={{ uri: item.photoURL || 'https://i.pravatar.cc/300' }} style={styles.avatar} />
+      <Image source={{ uri: item.otherUser.photoURL }} style={styles.avatar} />
       <View style={styles.textContainer}>
-        <Text style={styles.name}>{item.fullName}</Text>
-        <Text style={styles.message}>Tap to start chatting</Text>
+        <Text style={styles.name}>{item.otherUser.fullName}</Text>
+        <Text style={styles.message} numberOfLines={1}>
+          {item.lastMessage}
+        </Text>
       </View>
     </TouchableOpacity>
   );
@@ -75,14 +78,14 @@ export default function ChatListScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <TextInput
-        placeholder="Search your messages..."
+        placeholder="Search chats..."
         style={styles.search}
         value={search}
         onChangeText={setSearch}
       />
       <FlatList
-        data={filteredConnections}
-        keyExtractor={(item) => item.id}
+        data={filteredChats}
+        keyExtractor={(item) => item.chatId}
         renderItem={renderItem}
         contentContainerStyle={{ paddingBottom: 20 }}
       />
