@@ -1,11 +1,17 @@
-
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
   initializeAuth,
   getReactNativePersistence,
 } from 'firebase/auth';
+import { getStorage } from 'firebase/storage';
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAW1a-PorKqHuzNbvU8DPa1A_RxFyyikZY",
@@ -17,11 +23,30 @@ const firebaseConfig = {
   measurementId: "G-1JFNG33Y83"
 };
 
-const app = initializeApp(firebaseConfig);
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// 👇 Fix persistence issue for React Native
-const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(ReactNativeAsyncStorage),
-});
+let auth;
+try {
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(ReactNativeAsyncStorage),
+  });
+} catch (e) {
+  auth = getAuth(app); // fallback if already initialized
+}
 
-export { auth };
+let firestore;
+try {
+  firestore = initializeFirestore(app, {
+    experimentalForceLongPolling: true,
+    useFetchStreams: false,
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    }),
+  });
+} catch (e) {
+  firestore = getFirestore(app);
+}
+
+const storage = getStorage(app);
+
+export { auth, firestore, storage };
