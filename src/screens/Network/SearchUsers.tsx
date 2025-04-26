@@ -13,48 +13,69 @@ const SearchUsers = () => {
   const [results, setResults] = useState([]);
 
   const handleSearch = async () => {
-    if (!queryText.trim()) return;
+    const searchTerm = queryText.trim().toLowerCase();
+    if (!searchTerm) return;
 
-    const q = query(
-      collection(firestore, 'users'),
-      where('fullName', '>=', queryText),
-      where('fullName', '<=', queryText + '\uf8ff')
-    );
+    try {
+      const snapshot = await getDocs(collection(firestore, 'users'));
+      const users = snapshot.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .filter((u) => {
+          if (u.id === user.uid) return false;
+          const fullName = u.fullName?.toLowerCase() || '';
+          const email = u.email?.toLowerCase() || '';
+          const department = u.department?.toLowerCase() || '';
+          const gradYear = String(u.graduationYear || '');
 
-    const snapshot = await getDocs(q);
-    const users = snapshot.docs
-      .map((doc) => ({ id: doc.id, ...doc.data() }))
-      .filter((u) => u.id !== user.uid); // exclude current user
+          return (
+            fullName.includes(searchTerm) ||
+            email.includes(searchTerm) ||
+            department.includes(searchTerm) ||
+            gradYear.includes(searchTerm)
+          );
+        });
 
-    setResults(users);
+      setResults(users);
+    } catch (error) {
+      console.error('Error searching users:', error);
+      alert('Failed to search users.');
+    }
   };
 
   const handleSendRequest = async (toUser) => {
     try {
-      // Fetch current user's full name from Firestore
-      const userDoc = await getDocs(
+      const userDocSnap = await getDocs(
         query(collection(firestore, 'users'), where('uid', '==', user.uid))
       );
-  
-      let fullName = 'Unknown';
-      userDoc.forEach((doc) => {
+
+      let fullName = user.fullName || 'Unknown';
+      let photoURL = user.photoURL || '';
+
+      userDocSnap.forEach((doc) => {
         const data = doc.data();
         if (data.fullName) fullName = data.fullName;
+        if (data.photoURL) photoURL = data.photoURL;
       });
-  
+
       const fromUser = {
         uid: user.uid,
-        fullName, // ✅ properly fetched from Firestore
+        fullName,
+        photoURL,
       };
-  
+
+      console.log("👤 Authenticated UID:", user?.uid);
+      console.log("📦 From User Object:", fromUser);
+      console.log("📦 To User Object:", toUser);
+      
       const success = await sendLinkRequest(fromUser, toUser);
-      if (success) alert('Request Sent!');
+      
+      if (success) alert('✅ Request Sent!');
+      else alert('⚠️ Request already exists.');
     } catch (error) {
       console.error('Failed to send link request:', error);
-      alert('Failed to send request.');
+      alert('❌ Failed to send request.');
     }
   };
-  
 
   return (
     <View style={styles.container}>

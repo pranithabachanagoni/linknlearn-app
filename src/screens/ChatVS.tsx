@@ -1,12 +1,14 @@
-// ✅ Modified ChatVS to use Firebase Realtime Database instead of Firestore
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, FlatList, TextInput, Modal,
   StyleSheet, Image, KeyboardAvoidingView, Platform, Alert
 } from 'react-native';
-import { Ionicons, Entypo } from '@expo/vector-icons';
+import { Ionicons, Entypo, MaterialIcons } from '@expo/vector-icons';
 import { ref as dbRef, onValue, push } from 'firebase/database';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { database } from '../config/firebase';
+import { uploadToImgur } from '../utils/imgurUpload';
 
 const ChatVS = ({ navigation, route }: any) => {
   const { currentUserId, otherUser } = route.params;
@@ -53,8 +55,36 @@ const ChatVS = ({ navigation, route }: any) => {
       await push(messagesRef, newMessage);
       setInputText('');
     } catch (err) {
-      console.error("❌ Failed to send message:", err);
-      Alert.alert("Error", "Message failed to send.");
+      console.error('❌ Failed to send message:', err);
+      Alert.alert('Error', 'Message failed to send.');
+    }
+  };
+
+  const pickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.7,
+      });
+
+      if (!result.canceled && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+
+        const imageUrl = await uploadToImgur(base64);
+
+        const chatId = getSortedChatId();
+        await push(dbRef(database, `messages/${chatId}`), {
+          imageUrl,
+          senderId: currentUserId,
+          createdAt: Date.now(),
+        });
+      }
+    } catch (err) {
+      console.error('❌ Image send failed:', err);
+      Alert.alert('Error', 'Failed to send image.');
     }
   };
 
@@ -67,7 +97,14 @@ const ChatVS = ({ navigation, route }: any) => {
           isMe ? styles.messageRight : styles.messageLeft,
         ]}
       >
-        <Text style={isMe ? styles.textWhite : styles.textBlack}>{item.text}</Text>
+        {item.text && <Text style={isMe ? styles.textWhite : styles.textBlack}>{item.text}</Text>}
+        {item.imageUrl && (
+          <Image
+            source={{ uri: item.imageUrl }}
+            style={{ width: 200, height: 200, borderRadius: 10, marginTop: 5 }}
+            resizeMode="cover"
+          />
+        )}
         <Text style={styles.seenText}>{new Date(item.createdAt).toLocaleTimeString()}</Text>
       </View>
     );
@@ -82,15 +119,9 @@ const ChatVS = ({ navigation, route }: any) => {
         <Image source={{ uri: otherUser.photoURL || 'https://i.pravatar.cc/300' }} style={styles.avatar} />
         <Text style={styles.username}>{otherUser.fullName || 'User'}</Text>
         <View style={styles.headerIcons}>
-          <TouchableOpacity>
-            <Ionicons name="call" size={22} color="black" style={styles.icon} />
-          </TouchableOpacity>
-          <TouchableOpacity>
-            <Ionicons name="videocam" size={22} color="black" style={styles.icon} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setShowActions(true)}>
-            <Entypo name="dots-three-vertical" size={18} color="black" />
-          </TouchableOpacity>
+          <TouchableOpacity><Ionicons name="call" size={22} color="black" style={styles.icon} /></TouchableOpacity>
+          <TouchableOpacity><Ionicons name="videocam" size={22} color="black" style={styles.icon} /></TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowActions(true)}><Entypo name="dots-three-vertical" size={18} color="black" /></TouchableOpacity>
         </View>
       </View>
 
@@ -102,11 +133,11 @@ const ChatVS = ({ navigation, route }: any) => {
         contentContainerStyle={{ padding: 10 }}
       />
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={90}
-      >
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
         <View style={styles.inputContainer}>
+          <TouchableOpacity onPress={pickImage}>
+            <MaterialIcons name="photo-library" size={24} color="black" style={{ marginRight: 10 }} />
+          </TouchableOpacity>
           <TextInput
             value={inputText}
             onChangeText={setInputText}

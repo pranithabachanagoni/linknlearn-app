@@ -6,7 +6,7 @@ import MoreScreen from '../screens/MoreScreen';
 import ProfileStackNavigator from './ProfileStackNavigator';
 import NetworkStackNavigator from './NetworkStackNavigator';
 import ChatStackNavigator from './ChatStackNavigator';
-
+import ReportIssueScreen from '../screens/ReportIssueScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -59,7 +59,8 @@ export default function AppNavigator() {
       <Tab.Screen name="Chats" component={ChatStackNavigator} />
       <Tab.Screen name="Profile" component={ProfileStackNavigator} />
       <Tab.Screen name="More" component={MoreScreen} />
-      
+      <Tab.Screen name="ReportIssue" component={ReportIssueScreen} />
+
     </Tab.Navigator>
   );
 }
